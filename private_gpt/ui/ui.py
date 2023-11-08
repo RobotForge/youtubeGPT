@@ -13,12 +13,14 @@ from private_gpt.di import root_injector
 from private_gpt.server.chat.chat_service import ChatService
 from private_gpt.server.chunks.chunks_service import ChunksService
 from private_gpt.server.ingest.ingest_service import IngestService
+from private_gpt.server.transcript.transcript_service import TranscriptService
 from private_gpt.settings.settings import settings
 from private_gpt.ui.images import logo_svg
 
 ingest_service = root_injector.get(IngestService)
 chat_service = root_injector.get(ChatService)
 chunks_service = root_injector.get(ChunksService)
+transcript_service = root_injector.get(TranscriptService)
 
 
 def _chat(message: str, history: list[list[str]], mode: str, *_: Any) -> Any:
@@ -86,6 +88,16 @@ def _list_ingested_files() -> list[str]:
             )
     return list(files)
 
+def _extract_transcript_from_url(url):
+    transcript_service = TranscriptService(url)
+    video_id = transcript_service.extract_id()
+    transcript = transcript_service.get_youtube_transcript_to_text(video_id)
+    print(transcript)
+    path = Path(transcript)
+    ingest_service.ingest(file_name=path.name, file_data=path)
+    _uploaded_file_list.append([path.name])
+    return _uploaded_file_list
+
 
 # Global state
 _uploaded_file_list = [[row] for row in _list_ingested_files()]
@@ -116,6 +128,19 @@ with gr.Blocks(
 
     with gr.Row():
         with gr.Column(scale=3, variant="compact"):
+             # Add a text input field for collecting a URL
+            url_input = gr.Textbox(
+                label="Enter a URL",
+                value="",
+                type="text",
+            )
+            submit_button = gr.components.Button(
+                value = "submit",
+                size="sm",
+            )
+            
+
+
             mode = gr.Radio(
                 ["Query Documents", "LLM Chat", "Context Chunks"],
                 label="Mode",
@@ -136,6 +161,9 @@ with gr.Blocks(
             )
             upload_button.upload(
                 _upload_file, inputs=upload_button, outputs=ingested_dataset
+            )
+            submit_button.click(
+                _extract_transcript_from_url, inputs=url_input, outputs=ingested_dataset
             )
             ingested_dataset.render()
         with gr.Column(scale=7):
